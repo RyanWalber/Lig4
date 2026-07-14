@@ -9,16 +9,27 @@ public class Lig4Manager : MonoBehaviour
     private bool jogoFinalizado = false;
 
     [Header("Configurações Visuais")]
-    public GameObject prefabJogador1; // Peça Vermelha
-    public GameObject prefabJogador2; // Peça Amarela
-    public Transform[] colunasBotoes; // Os 7 botões
+    public GameObject prefabJogador1; 
+    public GameObject prefabJogador2; 
+    public Transform[] colunasBotoes; 
     
     [Header("Ajuste de Posição")]
-    public float yInicial; // Altura da primeira linha lá de baixo
-    public float espacamentoY; // Distância entre uma linha e outra
+    public float yInicial; 
+    public float espacamentoY; 
+
+    [Header("Rede")]
+    public Lig4Network scriptRede;
 
     void Start()
     {
+        if (scriptRede == null)
+        {
+            scriptRede = Lig4Network.Instancia;
+            if (scriptRede != null)
+            {
+                scriptRede.gameManager = this;
+            }
+        }
         IniciarNovoJogo();
     }
 
@@ -33,26 +44,44 @@ public class Lig4Manager : MonoBehaviour
         }
         jogadorAtual = 1;
         jogoFinalizado = false;
-        Debug.Log("Jogo Iniciado! Turno do Jogador 1.");
     }
 
     public void TentarJogar(int coluna)
     {
         if (jogoFinalizado || coluna < 0 || coluna >= COLUNAS) return;
 
+        if (scriptRede != null && !scriptRede.MinhaVez())
+        {
+            return;
+        }
+
+        FazerJogada(coluna);
+
+        if (scriptRede != null)
+        {
+            scriptRede.EnviarJogada(coluna);
+        }
+    }
+
+    public void ReceberJogadaInimiga(int coluna)
+    {
+        if (jogoFinalizado || coluna < 0 || coluna >= COLUNAS) return;
+        FazerJogada(coluna);
+    }
+
+    private void FazerJogada(int coluna)
+    {
         for (int y = 0; y < LINHAS; y++)
         {
             if (tabuleiro[coluna, y] == 0)
             {
                 tabuleiro[coluna, y] = jogadorAtual;
                 
-                // Cria a pecinha colorida na tela!
                 CriarPecaNaTela(coluna, y);
 
                 if (VerificarVitoria(coluna, y))
                 {
                     jogoFinalizado = true;
-                    Debug.Log($"VENCEDOR: Jogador {jogadorAtual}!");
                     return;
                 }
 
@@ -60,21 +89,23 @@ public class Lig4Manager : MonoBehaviour
                 return;
             }
         }
-        Debug.Log("Coluna cheia!");
     }
 
     private void CriarPecaNaTela(int col, int lin)
     {
         GameObject prefabUsar = (jogadorAtual == 1) ? prefabJogador1 : prefabJogador2;
-
-        // Pega a posição X do botão clicado e calcula a altura Y da linha
+        
         float posX = colunasBotoes[col].position.x;
         float posY = yInicial + (lin * espacamentoY);
         
-        // O -1 no Z serve para a peça ficar na frente do tabuleiro azul
         Vector3 posicaoFinal = new Vector3(posX, posY, -1); 
 
         Instantiate(prefabUsar, posicaoFinal, Quaternion.identity);
+    }
+
+    public int ObterJogadorAtual()
+    {
+        return jogadorAtual;
     }
 
     private bool VerificarVitoria(int col, int lin)
