@@ -1,6 +1,7 @@
 using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
@@ -23,11 +24,18 @@ public class Lig4Network : MonoBehaviour
     private TcpListener servidor;
     private TcpClient cliente;
     private NetworkStream fluxo;
+    private Thread threadEscuta;
+    private bool rodandoThread = false;
 
     private bool souHost = false;
     private bool conectado = false;
     private int meuIdJogador = 0;
     public Lig4Manager gameManager;
+
+    // TRAVA DE MEMÓRIA PARA A UNITY ATUALIZAR A TELA IMEDIATAMENTE
+    private readonly object travaMemoria = new object();
+    private bool temJogadaPendente = false;
+    private int colunaPendente = -1;
 
     void Awake()
     {
@@ -64,27 +72,36 @@ public class Lig4Network : MonoBehaviour
             if (servidor.Pending())
             {
                 cliente = servidor.AcceptTcpClient();
+                cliente.NoDelay = true;
                 fluxo = cliente.GetStream();
                 conectado = true;
                 meuIdJogador = 1;
+
+                IniciarThreadEscuta();
 
                 textoStatus.text = "Conectado! Carregando jogo...";
                 SceneManager.LoadScene(nomeCenaJogo);
             }
         }
 
-        if (conectado && fluxo != null && fluxo.DataAvailable)
+        bool processarAgora = false;
+        int col = -1;
+
+        // Verifica de forma segura se a Thread recebeu algo
+        lock (travaMemoria)
         {
-            byte[] buffer = new byte[1];
-            int lidos = fluxo.Read(buffer, 0, buffer.Length);
-            if (lidos > 0)
+            if (temJogadaPendente)
             {
-                int col = buffer[0];
-                if (gameManager != null)
-                {
-                    gameManager.ReceberJogadaInimiga(col);
-                }
+                processarAgora = true;
+                col = colunaPendente;
+                temJogadaPendente = false; // Limpa a fila
             }
+        }
+
+        // Aplica na Unity
+        if (processarAgora && gameManager != null)
+        {
+            gameManager.ReceberJogadaInimiga(col);
         }
     }
 
@@ -111,10 +128,13 @@ public class Lig4Network : MonoBehaviour
         {
             string ip = string.IsNullOrEmpty(inputIP.text) ? "127.0.0.1" : inputIP.text;
             cliente = new TcpClient();
+            cliente.NoDelay = true;
             cliente.Connect(ip, 7777);
             fluxo = cliente.GetStream();
             conectado = true;
             meuIdJogador = 2;
+
+            IniciarThreadEscuta();
 
             textoStatus.text = "Conectado! Carregando jogo...";
             SceneManager.LoadScene(nomeCenaJogo);
@@ -122,6 +142,43 @@ public class Lig4Network : MonoBehaviour
         catch (Exception e)
         {
             textoStatus.text = "Erro: " + e.Message;
+        }
+    }
+
+    void IniciarThreadEscuta()
+    {
+        rodandoThread = true;
+        threadEscuta = new Thread(EscutarRede);
+        threadEscuta.IsBackground = true;
+        threadEscuta.Start();
+    }
+
+    void EscutarRede()
+    {
+        byte[] buffer = new byte[1];
+        while (rodandoThread && conectado && fluxo != null)
+        {
+            try
+            {
+                if (fluxo.CanRead)
+                {
+                    int lidos = fluxo.Read(buffer, 0, buffer.Length);
+                    if (lidos > 0)
+                    {
+                        // Salva na memória de forma blindada para o Update ler
+                        lock (travaMemoria)
+                        {
+                            colunaPendente = buffer[0];
+                            temJogadaPendente = true;
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                break;
+            }
+            Thread.Sleep(10);
         }
     }
 
@@ -146,6 +203,7 @@ public class Lig4Network : MonoBehaviour
             {
                 byte[] dado = new byte[] { (byte)coluna };
                 fluxo.Write(dado, 0, dado.Length);
+                fluxo.Flush();
             }
             catch (Exception e)
             {
@@ -162,6 +220,8 @@ public class Lig4Network : MonoBehaviour
 
     void FecharConexoes()
     {
+        rodandoThread = false;
+        if (threadEscuta != null && threadEscuta.IsAlive) threadEscuta.Abort();
         if (fluxo != null) fluxo.Close();
         if (cliente != null) cliente.Close();
         if (servidor != null) servidor.Stop();

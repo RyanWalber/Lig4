@@ -9,13 +9,13 @@ public class Lig4Manager : MonoBehaviour
     private bool jogoFinalizado = false;
 
     [Header("Configurações Visuais")]
-    public GameObject prefabJogador1; 
-    public GameObject prefabJogador2; 
-    public Transform[] colunasBotoes; 
-    
+    public GameObject prefabJogador1;
+    public GameObject prefabJogador2;
+    public Transform[] colunasBotoes;
+
     [Header("Ajuste de Posição")]
-    public float yInicial; 
-    public float espacamentoY; 
+    public float yInicial;
+    public float espacamentoY;
 
     [Header("Rede")]
     public Lig4Network scriptRede;
@@ -50,22 +50,24 @@ public class Lig4Manager : MonoBehaviour
     {
         if (jogoFinalizado || coluna < 0 || coluna >= COLUNAS) return;
 
-        if (scriptRede != null && !scriptRede.MinhaVez())
-        {
-            return;
-        }
+        // Se não for minha vez, bloqueia
+        if (scriptRede != null && !scriptRede.MinhaVez()) return;
 
-        FazerJogada(coluna);
-
+        // Manda o dado pela rede PRIMEIRO
         if (scriptRede != null)
         {
             scriptRede.EnviarJogada(coluna);
         }
+
+        // Executa visualmente na minha tela
+        FazerJogada(coluna);
     }
 
     public void ReceberJogadaInimiga(int coluna)
     {
         if (jogoFinalizado || coluna < 0 || coluna >= COLUNAS) return;
+
+        // Simplesmente executa a jogada que chegou!
         FazerJogada(coluna);
     }
 
@@ -76,7 +78,7 @@ public class Lig4Manager : MonoBehaviour
             if (tabuleiro[coluna, y] == 0)
             {
                 tabuleiro[coluna, y] = jogadorAtual;
-                
+
                 CriarPecaNaTela(coluna, y);
 
                 if (VerificarVitoria(coluna, y))
@@ -85,6 +87,7 @@ public class Lig4Manager : MonoBehaviour
                     return;
                 }
 
+                // Inverte o turno normalmente
                 jogadorAtual = (jogadorAtual == 1) ? 2 : 1;
                 return;
             }
@@ -94,11 +97,11 @@ public class Lig4Manager : MonoBehaviour
     private void CriarPecaNaTela(int col, int lin)
     {
         GameObject prefabUsar = (jogadorAtual == 1) ? prefabJogador1 : prefabJogador2;
-        
+
         float posX = colunasBotoes[col].position.x;
         float posY = yInicial + (lin * espacamentoY);
-        
-        Vector3 posicaoFinal = new Vector3(posX, posY, -1); 
+
+        Vector3 posicaoFinal = new Vector3(posX, posY, -1);
 
         Instantiate(prefabUsar, posicaoFinal, Quaternion.identity);
     }
@@ -110,10 +113,10 @@ public class Lig4Manager : MonoBehaviour
 
     private bool VerificarVitoria(int col, int lin)
     {
-        return ChecarDirecao(col, lin, 1, 0) || 
-               ChecarDirecao(col, lin, 0, 1) || 
-               ChecarDirecao(col, lin, 1, 1) || 
-               ChecarDirecao(col, lin, 1, -1); 
+        return ChecarDirecao(col, lin, 1, 0) ||
+               ChecarDirecao(col, lin, 0, 1) ||
+               ChecarDirecao(col, lin, 1, 1) ||
+               ChecarDirecao(col, lin, 1, -1);
     }
 
     private bool ChecarDirecao(int col, int lin, int dirX, int dirY)
